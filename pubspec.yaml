@@ -1,0 +1,11 @@
+name: async_boundary
+description: Automatically track ongoing async operations in Flutter and show global loading.
+version: 0.1.0
+homepage: https://github.com/yourname/async_tracker
+environment:
+  sdk: ">=3.0.0 <5.0.0"
+  flutter: ">=3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
