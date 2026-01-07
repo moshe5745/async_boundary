@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-/// Tracker for async tasks (with Set for both auto and manual)
+/// Tracker for async tasks
 class AsyncTaskTracker {
   final Set<Future<dynamic>> _manualTasks = <Future<dynamic>>{};
   int _autoTasks = 0;  // For zone-tracked microtasks
@@ -14,7 +14,7 @@ class AsyncTaskTracker {
   /// Current count (read-only)
   int get taskCount => _manualTasks.length + _autoTasks;
 
-  /// Manual register (for .trackBoundary)
+  /// Manual register (for Future.asyncBoundary)
   void registerManual(Future<dynamic> future) {
     if (_manualTasks.contains(future)) return;
 
@@ -43,7 +43,7 @@ class AsyncTaskTracker {
   void dispose() => _controller.close();
 }
 
-/// Async boundary widget (zones auto-track microtasks only; ignores timers/delays by default)
+/// Async boundary widget
 class AsyncBoundary extends StatefulWidget {
   const AsyncBoundary({
     super.key,
@@ -56,7 +56,7 @@ class AsyncBoundary extends StatefulWidget {
   final Widget loadingWidget;
   final Widget? Function(BuildContext context, Object error, StackTrace stackTrace)? errorHandler;
 
-  /// Find the nearest boundary state (for manual extensions)
+  /// Find the nearest boundary state (for asyncBoundary methods)
   static AsyncBoundaryState? maybeOf(BuildContext context) {
     return context.findAncestorStateOfType<AsyncBoundaryState>();
   }
@@ -123,21 +123,32 @@ class AsyncBoundaryState extends State<AsyncBoundary> {
   }
 }
 
-/// Extensions for manual include/exclude
-extension AsyncBoundaryExtensions<T> on Future<T> {
-  /// Manually track this future in the nearest AsyncBoundary (e.g., for timers/delays)
-  Future<T> trackBoundary(BuildContext context) {
-    final state = AsyncBoundary.maybeOf(context);
-    if (state == null) return this;  // No-op if no boundary
-    state._tracker.registerManual(this as Future<dynamic>);
+/// Extension for manual include/exclude on Future (tracked: true to include/manual track, false no-op)
+extension AsyncBoundaryFutureExtension<T> on Future<T> {
+  /// Include/exclude this future in the nearest AsyncBoundary (tracked: true to manually track, false no-op)
+  Future<T> asyncBoundary(BuildContext context, {bool tracked = true}) {
+    if (tracked) {
+      final state = AsyncBoundary.maybeOf(context);
+      if (state == null) return this;  // No-op if no boundary
+      state._tracker.registerManual(this as Future<dynamic>);
+    }
     return this;
   }
 }
 
-/// Run a callback in a sub-zone that excludes auto-tracking (e.g., for specific async blocks)
-T excludeBoundary<T>(BuildContext context, T Function() callback) {
-  return runZoned<T>(
-    callback,
-    zoneSpecification: const ZoneSpecification(),  // Empty spec — no tracking overrides
-  );
+/// Extension for include/exclude on callbacks (tracked: true to include/run normal, false to exclude/run untracked)
+extension AsyncBoundaryFunctionExtension<T> on T Function() {
+  /// Include/exclude this callback in the nearest AsyncBoundary (tracked: true to run tracked, false untracked)
+  T asyncBoundary(BuildContext context, {bool tracked = true}) {
+    if (tracked) {
+      // Run in default zone (auto-tracked for microtasks)
+      return this();
+    } else {
+      // Run in excluded sub-zone (no auto-tracking)
+      return runZoned<T>(
+        this,
+        zoneSpecification: const ZoneSpecification(),  // Empty spec — no tracking overrides
+      );
+    }
+  }
 }
